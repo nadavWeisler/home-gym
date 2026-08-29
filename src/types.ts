@@ -7,11 +7,16 @@ export type BodyPart =
   | 'core'
   | 'full'
 
+export type WorkoutMode = 'edit' | 'perform'
+
 export type Exercise = {
   id: string
   name: string
   bodyPart: BodyPart
   image: string
+  images: string[]
+  equipment: string
+  instructions: string[]
 }
 
 export type ProgramDay = {
@@ -31,11 +36,13 @@ export type SetLog = {
   id: string
   reps: number
   weight: number
+  done?: boolean
 }
 
 export type ExerciseLog = {
   exerciseId: string
   sets: SetLog[]
+  done?: boolean
 }
 
 export type WorkoutSession = {

@@ -1,9 +1,9 @@
 import { bodyPartLabel, exerciseById } from '../data/exercises'
-import { programById } from '../data/programs'
-import type { ProgramDay, WorkoutSession } from '../types'
+import type { Program, ProgramDay, WorkoutSession } from '../types'
 
 type Props = {
   sessions: WorkoutSession[]
+  programById: Record<string, Program>
   onDelete: (id: string) => void
 }
 
@@ -17,17 +17,27 @@ function formatDate(iso: string): string {
   })
 }
 
-export function History({ sessions, onDelete }: Props) {
+export function History({ sessions, programById, onDelete }: Props) {
+  const totalExercises = sessions.reduce(
+    (total, session) => total + session.exercises.length,
+    0,
+  )
+
   if (sessions.length === 0) {
     return (
       <section>
         <div className="section-head">
+          <p className="section-eyebrow">Progress</p>
           <h2>History</h2>
-          <p>Saved workouts will show up here.</p>
+          <p>Every saved workout lands here.</p>
         </div>
-        <p className="empty">
-          No sessions yet. Start a program to log your first workout.
-        </p>
+        <div className="empty-state hero-card">
+          <span className="hero-icon" aria-hidden="true">
+            ◷
+          </span>
+          <h3>No sessions yet</h3>
+          <p>Start a program and save your first workout to build a training log.</p>
+        </div>
       </section>
     )
   }
@@ -35,10 +45,20 @@ export function History({ sessions, onDelete }: Props) {
   return (
     <section>
       <div className="section-head">
+        <p className="section-eyebrow">Progress</p>
         <h2>History</h2>
-        <p>
-          {sessions.length} saved workout{sessions.length === 1 ? '' : 's'}.
-        </p>
+        <p>Your completed workouts and logged sets.</p>
+      </div>
+
+      <div className="stats-row">
+        <div className="stat-card panel">
+          <span className="stat-value">{sessions.length}</span>
+          <span className="stat-label">Workouts</span>
+        </div>
+        <div className="stat-card panel">
+          <span className="stat-value">{totalExercises}</span>
+          <span className="stat-label">Exercises logged</span>
+        </div>
       </div>
 
       <div className="history-list">
@@ -47,6 +67,7 @@ export function History({ sessions, onDelete }: Props) {
           const day = program?.days.find(
             (item: ProgramDay) => item.id === session.dayId,
           )
+          const doneCount = session.exercises.filter((log) => log.done).length
 
           return (
             <article key={session.id} className="panel history-item">
@@ -64,12 +85,17 @@ export function History({ sessions, onDelete }: Props) {
                 </button>
               </header>
 
-              <p style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
-                {program?.name ?? 'Program'}
-                {session.notes ? ` · ${session.notes}` : ''}
-              </p>
+              <div className="history-meta">
+                <span className="stat-pill">{program?.name ?? 'Program'}</span>
+                <span className="stat-pill subtle">
+                  {doneCount}/{session.exercises.length} done
+                </span>
+                {session.notes ? (
+                  <span className="history-notes">{session.notes}</span>
+                ) : null}
+              </div>
 
-              <ul>
+              <ul className="history-exercises">
                 {session.exercises.map((log) => {
                   const exercise = exerciseById[log.exerciseId]
                   const summary = log.sets
@@ -77,12 +103,17 @@ export function History({ sessions, onDelete }: Props) {
                     .join(', ')
 
                   return (
-                    <li key={log.exerciseId}>
-                      <strong style={{ color: 'var(--text)' }}>
+                    <li key={log.exerciseId} className={log.done ? 'is-done' : ''}>
+                      <span className="history-exercise-name">
+                        {log.done ? '✓ ' : ''}
                         {exercise?.name ?? log.exerciseId}
-                      </strong>
-                      {exercise ? ` · ${bodyPartLabel[exercise.bodyPart]}` : ''}
-                      {` — ${summary}`}
+                      </span>
+                      {exercise ? (
+                        <span className="training-tag">
+                          {bodyPartLabel[exercise.bodyPart]}
+                        </span>
+                      ) : null}
+                      <span className="history-sets">{summary}</span>
                     </li>
                   )
                 })}
