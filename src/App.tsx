@@ -1,95 +1,174 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ExerciseBank } from './components/ExerciseBank'
 import { History } from './components/History'
+import { ProgramBuilder } from './components/ProgramBuilder'
 import { Programs } from './components/Programs'
 import { WorkoutSessionView } from './components/WorkoutSession'
+import {
+  loadPrograms,
+  programLookup,
+  savePrograms,
+  updateProgramDay,
+} from './programStorage'
 import { loadSessions, saveSessions } from './storage'
-import type { WorkoutSession } from './types'
+import type { Program, ProgramDay, WorkoutMode, WorkoutSession } from './types'
 
 type Tab = 'programs' | 'exercises' | 'history'
 
 type ActiveWorkout = {
   programId: string
   dayId: string
+  mode: WorkoutMode
 }
+
+const tabs: { id: Tab; label: string; short: string }[] = [
+  { id: 'programs', label: 'Programs', short: 'Plans' },
+  { id: 'exercises', label: 'Exercises', short: 'Bank' },
+  { id: 'history', label: 'History', short: 'Log' },
+]
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('programs')
   const [sessions, setSessions] = useState<WorkoutSession[]>(() => loadSessions())
+  const [programs, setPrograms] = useState<Program[]>(() => loadPrograms())
+  const [showBuilder, setShowBuilder] = useState(() => loadPrograms().length === 0)
   const [active, setActive] = useState<ActiveWorkout | null>(null)
+
+  const programById = useMemo(() => programLookup(programs), [programs])
+
+  const activeProgram = active ? programById[active.programId] : undefined
+  const activeDay = activeProgram?.days.find(
+    (day: ProgramDay) => day.id === active?.dayId,
+  )
 
   useEffect(() => {
     saveSessions(sessions)
   }, [sessions])
 
-  function startWorkout(programId: string, dayId: string) {
-    setActive({ programId, dayId })
+  useEffect(() => {
+    savePrograms(programs)
+  }, [programs])
+
+  function saveProgramDay(
+    programId: string,
+    dayId: string,
+    exerciseIds: string[],
+  ) {
+    setPrograms((prev) => updateProgramDay(prev, programId, dayId, exerciseIds))
+  }
+
+  function addProgram(program: Program) {
+    setPrograms((prev) => [...prev, program])
+    setShowBuilder(false)
+    setTab('programs')
+  }
+
+  function startWorkout(programId: string, dayId: string, mode: WorkoutMode) {
+    setActive({ programId, dayId, mode })
   }
 
   function saveWorkout(session: WorkoutSession) {
+    saveProgramDay(
+      session.programId,
+      session.dayId,
+      session.exercises.map((log) => log.exerciseId),
+    )
     setSessions((prev) => [session, ...prev])
     setActive(null)
     setTab('history')
+  }
+
+  function saveProgramChanges(
+    programId: string,
+    dayId: string,
+    exerciseIds: string[],
+  ) {
+    saveProgramDay(programId, dayId, exerciseIds)
+    setActive(null)
+    setTab('programs')
   }
 
   function deleteSession(id: string) {
     setSessions((prev) => prev.filter((session) => session.id !== id))
   }
 
+  const showNav = !active && !showBuilder
+
+  function renderNav(className: string) {
+    return (
+      <nav className={className} aria-label="Main">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`nav-btn ${tab === item.id ? 'active' : ''}`}
+            onClick={() => setTab(item.id)}
+          >
+            <span className="nav-btn-label">{item.label}</span>
+            <span className="nav-btn-short">{item.short}</span>
+          </button>
+        ))}
+      </nav>
+    )
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <h1>Home Gym</h1>
-          <p>Track sessions from your exercise bank</p>
+          <div className="brand-row">
+            <span className="brand-mark" aria-hidden="true" />
+            <h1>Home Gym</h1>
+          </div>
+          <p>Your personal training space</p>
         </div>
-        {!active ? (
-          <nav className="nav" aria-label="Main">
-            <button
-              type="button"
-              className={`nav-btn ${tab === 'programs' ? 'active' : ''}`}
-              onClick={() => setTab('programs')}
-            >
-              Programs
-            </button>
-            <button
-              type="button"
-              className={`nav-btn ${tab === 'exercises' ? 'active' : ''}`}
-              onClick={() => setTab('exercises')}
-            >
-              Exercises
-            </button>
-            <button
-              type="button"
-              className={`nav-btn ${tab === 'history' ? 'active' : ''}`}
-              onClick={() => setTab('history')}
-            >
-              History
-            </button>
-          </nav>
-        ) : null}
+        {showNav ? renderNav('nav nav-desktop') : null}
       </header>
 
-      <main>
-        {active ? (
-          <WorkoutSessionView
-            programId={active.programId}
-            dayId={active.dayId}
-            onCancel={() => setActive(null)}
-            onSave={saveWorkout}
+      <main className="page-content" key={showBuilder ? 'builder' : active ? 'workout' : tab}>
+        {showBuilder ? (
+          <ProgramBuilder
+            isFirstProgram={programs.length === 0}
+            onComplete={addProgram}
+            onCancel={
+              programs.length > 0 ? () => setShowBuilder(false) : undefined
+            }
           />
         ) : null}
 
-        {!active && tab === 'programs' ? (
-          <Programs onStart={startWorkout} />
+        {active && activeProgram && activeDay ? (
+          <WorkoutSessionView
+            program={activeProgram}
+            day={activeDay}
+            initialMode={active.mode}
+            onCancel={() => setActive(null)}
+            onSave={saveWorkout}
+            onSaveProgram={(exerciseIds) =>
+              saveProgramChanges(active.programId, active.dayId, exerciseIds)
+            }
+          />
         ) : null}
 
-        {!active && tab === 'exercises' ? <ExerciseBank /> : null}
+        {!active && !showBuilder && tab === 'programs' ? (
+          <Programs
+            programs={programs}
+            onStart={startWorkout}
+            onBuildProgram={() => setShowBuilder(true)}
+          />
+        ) : null}
 
-        {!active && tab === 'history' ? (
-          <History sessions={sessions} onDelete={deleteSession} />
+        {!active && !showBuilder && tab === 'exercises' ? <ExerciseBank /> : null}
+
+        {!active && !showBuilder && tab === 'history' ? (
+          <History
+            sessions={sessions}
+            programById={programById}
+            onDelete={deleteSession}
+          />
         ) : null}
       </main>
+
+      {showNav ? renderNav('nav nav-mobile bottom-nav') : null}
     </div>
   )
 }
