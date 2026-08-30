@@ -2,6 +2,8 @@
 
 Basic web app for tracking home gym workouts.
 
+**Live:** https://nadavweisler.github.io/Home-gym/
+
 ## Features
 
 - Exercise bank with name, image, and body part
