@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// GitHub Pages project site lives at /home-gym/. Local `npm run dev` stays at /.
-export default defineConfig({
+// Local `npm run dev` stays at /. Branch Pages serves the committed build at /home-gym/docs/.
+export default defineConfig(({ command }) => ({
+  root: 'app',
   plugins: [react()],
-  base: process.env.BASE_PATH || '/',
-})
+  base: process.env.BASE_PATH || (command === 'serve' ? '/' : '/home-gym/docs/'),
+  publicDir: 'public',
+  build: {
+    outDir: '../docs',
+    emptyOutDir: true,
+  },
+}))

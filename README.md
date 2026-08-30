@@ -2,7 +2,7 @@
 
 Basic web app for tracking home gym workouts.
 
-**Live:** https://nadavweisler.github.io/home-gym/
+**Live:** https://nadavweisler.github.io/home-gym/docs/
 
 ## Features
 
