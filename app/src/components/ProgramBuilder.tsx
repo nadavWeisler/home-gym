@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   bodyPartLabel,
   equipmentOptions,
@@ -174,10 +175,10 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
     if (!workoutType || !currentDay) return 'Continue'
     if (muscleIndex < currentDay.muscles.length - 1) {
       const nextPart = currentDay.muscles[muscleIndex + 1].part
-      return `Next: ${bodyPartLabel[nextPart]}`
+      return `Next: ${bodyPartLabel[nextPart]} exercises`
     }
     if (dayIndex < workoutType.days.length - 1) {
-      return `Next: ${workoutType.days[dayIndex + 1].name}`
+      return `Next day: ${workoutType.days[dayIndex + 1].name}`
     }
     return 'Review program'
   }
@@ -260,7 +261,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
                 )
               })}
             </div>
-            <div className="builder-sticky-bar">
+            <BuilderStickyBar>
               {isFirstProgram ? (
                 <button
                   type="button"
@@ -284,7 +285,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               >
                 Next: equipment
               </button>
-            </div>
+            </BuilderStickyBar>
           </div>
         )
       case 'equipment':
@@ -322,7 +323,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
                 )
               })}
             </div>
-            <div className="builder-sticky-bar">
+            <BuilderStickyBar>
               <button
                 type="button"
                 className="btn secondary"
@@ -338,7 +339,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               >
                 Next: pick exercises
               </button>
-            </div>
+            </BuilderStickyBar>
           </div>
         )
       case 'exercises': {
@@ -454,7 +455,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               </div>
             )}
 
-            <div className="builder-sticky-bar">
+            <BuilderStickyBar>
               <button
                 type="button"
                 className="btn secondary"
@@ -465,7 +466,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               <button type="button" className="btn" onClick={goNextMuscle}>
                 {nextExerciseLabel()}
               </button>
-            </div>
+            </BuilderStickyBar>
           </div>
         )
       }
@@ -525,7 +526,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               )}
             </div>
 
-            <div className="builder-sticky-bar">
+            <BuilderStickyBar>
               <button
                 type="button"
                 className="btn secondary"
@@ -552,7 +553,7 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               >
                 Save program
               </button>
-            </div>
+            </BuilderStickyBar>
           </div>
         )
       default: {
@@ -594,6 +595,13 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
         />
       ) : null}
     </section>
+  )
+}
+
+function BuilderStickyBar({ children }: { children: ReactNode }) {
+  return createPortal(
+    <div className="builder-sticky-bar">{children}</div>,
+    document.body,
   )
 }
 

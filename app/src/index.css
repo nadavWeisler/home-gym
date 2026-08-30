@@ -104,7 +104,7 @@ a.text-link:hover {
 }
 
 .page-content {
-  animation: page-in 0.35s ease both;
+  animation: page-in 0.35s ease;
 }
 
 .topbar {
@@ -1258,7 +1258,7 @@ a.text-link:hover {
 .program-builder {
   display: grid;
   gap: 1.25rem;
-  animation: rise 0.45s ease both;
+  animation: rise 0.45s ease;
 }
 
 .builder-steps {
