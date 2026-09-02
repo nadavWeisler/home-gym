@@ -53,3 +53,10 @@ export type WorkoutSession = {
   exercises: ExerciseLog[]
   notes?: string
 }
+
+export type ActiveWorkout = {
+  programId: string
+  dayId: string
+  mode: WorkoutMode
+  session: WorkoutSession
+}

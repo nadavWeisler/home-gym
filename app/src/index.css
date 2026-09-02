@@ -923,7 +923,7 @@ a.text-link:hover {
 }
 
 .set-row.with-done {
-  grid-template-columns: 2rem 1fr 1fr auto;
+  grid-template-columns: 2rem minmax(3.75rem, auto) 1fr 1fr auto;
 }
 
 .done-btn {
@@ -1072,9 +1072,29 @@ a.text-link:hover {
 
 .set-row {
   display: grid;
-  grid-template-columns: 2rem 1fr 1fr auto;
+  grid-template-columns: 2rem minmax(3.75rem, auto) 1fr 1fr auto;
   gap: 0.5rem;
   align-items: center;
+}
+
+.sets-head {
+  display: grid;
+  grid-template-columns: 2rem minmax(3.75rem, auto) 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.set-ghost {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  opacity: 0.7;
+  white-space: nowrap;
 }
 
 .set-row label {
@@ -1753,11 +1773,15 @@ a.text-link:hover {
   }
 
   .set-row {
-    grid-template-columns: 1.5rem 1fr 1fr auto;
+    grid-template-columns: 1.5rem minmax(3.25rem, auto) 1fr 1fr auto;
+  }
+
+  .sets-head {
+    grid-template-columns: 1.5rem minmax(3.25rem, auto) 1fr 1fr auto;
   }
 
   .set-row.with-done {
-    grid-template-columns: 1.5rem 1fr 1fr;
+    grid-template-columns: 1.5rem minmax(3.25rem, auto) 1fr 1fr;
   }
 
   .set-row.with-done .done-btn {

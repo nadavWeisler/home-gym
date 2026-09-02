@@ -10,16 +10,24 @@ import {
   savePrograms,
   updateProgramDay,
 } from './programStorage'
-import { loadSessions, saveSessions } from './storage'
-import type { Program, ProgramDay, WorkoutMode, WorkoutSession } from './types'
+import {
+  createWorkoutSession,
+  findTodaysSession,
+  loadActiveWorkout,
+  loadSessions,
+  saveActiveWorkout,
+  saveSessions,
+  upsertSession,
+} from './storage'
+import type {
+  ActiveWorkout,
+  Program,
+  ProgramDay,
+  WorkoutMode,
+  WorkoutSession,
+} from './types'
 
 type Tab = 'programs' | 'exercises' | 'history'
-
-type ActiveWorkout = {
-  programId: string
-  dayId: string
-  mode: WorkoutMode
-}
 
 const tabs: { id: Tab; label: string; short: string }[] = [
   { id: 'programs', label: 'Programs', short: 'Plans' },
@@ -32,7 +40,9 @@ export default function App() {
   const [sessions, setSessions] = useState<WorkoutSession[]>(() => loadSessions())
   const [programs, setPrograms] = useState<Program[]>(() => loadPrograms())
   const [showBuilder, setShowBuilder] = useState(() => loadPrograms().length === 0)
-  const [active, setActive] = useState<ActiveWorkout | null>(null)
+  const [active, setActive] = useState<ActiveWorkout | null>(() =>
+    loadActiveWorkout(),
+  )
 
   const programById = useMemo(() => programLookup(programs), [programs])
 
@@ -49,6 +59,17 @@ export default function App() {
     savePrograms(programs)
   }, [programs])
 
+  useEffect(() => {
+    saveActiveWorkout(active)
+  }, [active])
+
+  useEffect(() => {
+    if (!active) return
+    const program = programById[active.programId]
+    const dayExists = program?.days.some((day) => day.id === active.dayId)
+    if (!program || !dayExists) setActive(null)
+  }, [active, programById])
+
   function saveProgramDay(
     programId: string,
     dayId: string,
@@ -64,7 +85,21 @@ export default function App() {
   }
 
   function startWorkout(programId: string, dayId: string, mode: WorkoutMode) {
-    setActive({ programId, dayId, mode })
+    const program = programById[programId]
+    const day = program?.days.find((item: ProgramDay) => item.id === dayId)
+    if (!program || !day) return
+    const session =
+      findTodaysSession(sessions, programId, dayId) ??
+      createWorkoutSession(programId, dayId, day.exerciseIds, sessions)
+    setActive({ programId, dayId, mode, session })
+  }
+
+  function persistDraft(session: WorkoutSession) {
+    setActive((prev) => (prev ? { ...prev, session } : prev))
+  }
+
+  function changeWorkoutMode(mode: WorkoutMode) {
+    setActive((prev) => (prev ? { ...prev, mode } : prev))
   }
 
   function saveWorkout(session: WorkoutSession) {
@@ -73,7 +108,7 @@ export default function App() {
       session.dayId,
       session.exercises.map((log) => log.exerciseId),
     )
-    setSessions((prev) => [session, ...prev])
+    setSessions((prev) => upsertSession(prev, session))
     setActive(null)
     setTab('history')
   }
@@ -141,8 +176,12 @@ export default function App() {
             program={activeProgram}
             day={activeDay}
             initialMode={active.mode}
+            session={active.session}
+            previousSessions={sessions}
             onCancel={() => setActive(null)}
             onSave={saveWorkout}
+            onDraft={persistDraft}
+            onModeChange={changeWorkoutMode}
             onSaveProgram={(exerciseIds) =>
               saveProgramChanges(active.programId, active.dayId, exerciseIds)
             }

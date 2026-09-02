@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { bodyPartLabel, exerciseById } from '../data/exercises'
-import { createSessionId } from '../storage'
+import { emptySet, lastSetsForExercise } from '../storage'
 import type {
   Exercise,
   ExerciseLog,
@@ -18,54 +18,107 @@ type Props = {
   program: Program
   day: ProgramDay
   initialMode: WorkoutMode
+  session: WorkoutSession
+  previousSessions: WorkoutSession[]
   onCancel: () => void
   onSave: (session: WorkoutSession) => void
+  onDraft: (session: WorkoutSession) => void
+  onModeChange: (mode: WorkoutMode) => void
   onSaveProgram: (exerciseIds: string[]) => void
-}
-
-function createSetId(): string {
-  return `set-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-}
-
-function emptySet(): SetLog {
-  return { id: createSetId(), reps: 8, weight: 0, done: false }
-}
-
-function buildInitialLogs(exerciseIds: string[]): ExerciseLog[] {
-  return exerciseIds.map((exerciseId) => ({
-    exerciseId,
-    done: false,
-    sets: [emptySet(), emptySet(), emptySet()],
-  }))
 }
 
 function remainingWork(logs: ExerciseLog[]): boolean {
   return logs.some((log) => !log.done || log.sets.some((set) => !set.done))
 }
 
+function lastLabel(ghost: SetLog | undefined): string {
+  if (!ghost) return '—'
+  return `${ghost.weight}×${ghost.reps}`
+}
+
+function SetGhost({ ghost }: { ghost: SetLog | undefined }) {
+  return (
+    <span
+      className="set-ghost"
+      title={ghost ? 'Last time' : undefined}
+      aria-label={ghost ? `Last time ${lastLabel(ghost)}` : 'No previous set'}
+    >
+      {lastLabel(ghost)}
+    </span>
+  )
+}
+
+function SetsHead() {
+  return (
+    <div className="sets-head">
+      <span>#</span>
+      <span>Last</span>
+      <span>Reps</span>
+      <span>Weight</span>
+      <span />
+    </div>
+  )
+}
+
 export function WorkoutSessionView({
   program,
   day,
   initialMode,
+  session,
+  previousSessions,
   onCancel,
   onSave,
+  onDraft,
+  onModeChange,
   onSaveProgram,
 }: Props) {
   const [mode, setMode] = useState<WorkoutMode>(initialMode)
-  const [logs, setLogs] = useState<ExerciseLog[]>(() =>
-    buildInitialLogs(day.exerciseIds),
-  )
-  const [notes, setNotes] = useState('')
+  const [logs, setLogs] = useState<ExerciseLog[]>(() => session.exercises)
+  const [notes, setNotes] = useState(session.notes ?? '')
   const [preview, setPreview] = useState<Exercise | null>(null)
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null)
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const open = session.exercises.findIndex((log) => !log.done)
+    return open >= 0 ? open : 0
+  })
   const [restNonce, setRestNonce] = useState(0)
+  const onDraftRef = useRef(onDraft)
+  onDraftRef.current = onDraft
+
+  const lastByExercise = useMemo(() => {
+    const map: Record<string, SetLog[]> = {}
+    for (const log of logs) {
+      const last = lastSetsForExercise(
+        previousSessions,
+        log.exerciseId,
+        session.id,
+      )
+      if (last) map[log.exerciseId] = last
+    }
+    return map
+  }, [logs, previousSessions, session.id])
+
+  useEffect(() => {
+    onDraftRef.current({
+      id: session.id,
+      programId: program.id,
+      dayId: day.id,
+      date: session.date,
+      exercises: logs,
+      notes: notes.trim() || undefined,
+    })
+  }, [logs, notes, session.id, session.date, program.id, day.id])
 
   const doneCount = logs.filter((log) => log.done).length
   const currentLog = logs[currentIndex]
   const currentExercise = currentLog
     ? exerciseById[currentLog.exerciseId]
     : undefined
+
+  function changeMode(next: WorkoutMode) {
+    setMode(next)
+    onModeChange(next)
+  }
 
   function updateSet(
     exerciseIndex: number,
@@ -163,15 +216,15 @@ export function WorkoutSessionView({
   }
 
   function handleSave() {
-    const session: WorkoutSession = {
-      id: createSessionId(),
+    const nextSession: WorkoutSession = {
+      id: session.id,
       programId: program.id,
       dayId: day.id,
-      date: new Date().toISOString(),
+      date: session.date,
       exercises: logs,
       notes: notes.trim() || undefined,
     }
-    onSave(session)
+    onSave(nextSession)
   }
 
   function handleSaveProgram() {
@@ -233,9 +286,13 @@ export function WorkoutSessionView({
                   </div>
 
                   <div className="sets">
+                    <SetsHead />
                     {log.sets.map((set, setIndex) => (
                       <div key={set.id} className="set-row">
                         <label>{setIndex + 1}</label>
+                        <SetGhost
+                          ghost={lastByExercise[log.exerciseId]?.[setIndex]}
+                        />
                         <input
                           type="number"
                           min={0}
@@ -343,9 +400,13 @@ export function WorkoutSessionView({
               </div>
 
               <div className="sets">
+                <SetsHead />
                 {currentLog.sets.map((set, setIndex) => (
                   <div key={set.id} className="set-row with-done">
                     <label>{setIndex + 1}</label>
+                    <SetGhost
+                      ghost={lastByExercise[currentLog.exerciseId]?.[setIndex]}
+                    />
                     <input
                       type="number"
                       min={0}
@@ -447,7 +508,7 @@ export function WorkoutSessionView({
             role="tab"
             aria-selected={mode === 'edit'}
             className={`nav-btn ${mode === 'edit' ? 'active' : ''}`}
-            onClick={() => setMode('edit')}
+            onClick={() => changeMode('edit')}
           >
             Edit
           </button>
@@ -456,7 +517,7 @@ export function WorkoutSessionView({
             role="tab"
             aria-selected={mode === 'perform'}
             className={`nav-btn ${mode === 'perform' ? 'active' : ''}`}
-            onClick={() => setMode('perform')}
+            onClick={() => changeMode('perform')}
           >
             Workout
           </button>
@@ -517,7 +578,7 @@ export function WorkoutSessionView({
             <button type="button" className="btn" onClick={handleSaveProgram}>
               Save program
             </button>
-            <button type="button" className="btn secondary" onClick={() => setMode('perform')}>
+            <button type="button" className="btn secondary" onClick={() => changeMode('perform')}>
               Start workout
             </button>
           </>
