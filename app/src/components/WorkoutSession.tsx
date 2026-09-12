@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { bodyPartLabel, exerciseById } from '../data/exercises'
 import { emptySet, lastSetsForExercise } from '../storage'
 import type {
@@ -82,6 +83,7 @@ export function WorkoutSessionView({
     return open >= 0 ? open : 0
   })
   const [restNonce, setRestNonce] = useState(0)
+  const [exerciseSheetOpen, setExerciseSheetOpen] = useState(false)
   const onDraftRef = useRef(onDraft)
   onDraftRef.current = onDraft
 
@@ -391,13 +393,9 @@ export function WorkoutSessionView({
                 ))}
               </div>
 
-              <div className="perform-copy">
-                <p className="body-part">
-                  Exercise {currentIndex + 1} of {logs.length}
-                </p>
-                <h3>{currentExercise.name}</h3>
-                <p>{bodyPartLabel[currentExercise.bodyPart]}</p>
-              </div>
+              <p className="perform-copy body-part">
+                {bodyPartLabel[currentExercise.bodyPart]}
+              </p>
 
               <div className="sets">
                 <SetsHead />
@@ -445,43 +443,10 @@ export function WorkoutSessionView({
                       className={`btn done-btn ${set.done ? 'active' : ''}`}
                       onClick={() => toggleSetDone(currentIndex, setIndex)}
                     >
-                      {set.done ? 'Done' : 'Mark done'}
+                      Done
                     </button>
                   </div>
                 ))}
-              </div>
-
-              <div className="perform-actions">
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() =>
-                    setCurrentIndex((value) => Math.max(0, value - 1))
-                  }
-                  disabled={currentIndex === 0}
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => markExerciseDone(currentIndex)}
-                  disabled={Boolean(currentLog.done)}
-                >
-                  {currentLog.done ? 'Exercise done' : 'Mark exercise done'}
-                </button>
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() =>
-                    setCurrentIndex((value) =>
-                      Math.min(logs.length - 1, value + 1),
-                    )
-                  }
-                  disabled={currentIndex === logs.length - 1}
-                >
-                  Next
-                </button>
               </div>
             </article>
           )
@@ -529,30 +494,56 @@ export function WorkoutSessionView({
 
       <div className={mode === 'perform' ? 'perform-toolbar' : 'timer-idle'}>
         <WorkoutTimer
+          sessionId={session.id}
           sessionRunning={mode === 'perform'}
           restNonce={restNonce}
         />
-        {mode === 'perform' ? (
-          <>
-            <p className="progress-copy">
-              {doneCount} / {logs.length} exercises done
-            </p>
-            <div className="progress-chips">
-              {logs.map((log, index) => {
-                const exercise = exerciseById[log.exerciseId]
-                return (
-                  <button
-                    key={log.exerciseId}
-                    type="button"
-                    className={`chip ${index === currentIndex ? 'active' : ''} ${log.done ? 'done' : ''}`}
-                    onClick={() => setCurrentIndex(index)}
-                  >
-                    {index + 1}. {exercise?.name ?? log.exerciseId}
-                  </button>
-                )
-              })}
-            </div>
-          </>
+        {mode === 'perform' && currentExercise ? (
+          <div className="current-exercise">
+            <button
+              type="button"
+              className="current-exercise-toggle"
+              aria-expanded={exerciseSheetOpen}
+              aria-controls="exercise-sheet"
+              onClick={() => setExerciseSheetOpen((open) => !open)}
+            >
+              <span className="current-exercise-name">
+                {currentExercise.name}
+              </span>
+              <span className="progress-copy">
+                {currentIndex + 1}/{logs.length}
+                {doneCount > 0 ? ` · ${doneCount} done` : ''}
+              </span>
+            </button>
+            {exerciseSheetOpen ? (
+              <div
+                id="exercise-sheet"
+                className="exercise-sheet"
+                role="listbox"
+                aria-label="Exercises"
+              >
+                {logs.map((log, index) => {
+                  const exercise = exerciseById[log.exerciseId]
+                  return (
+                    <button
+                      key={log.exerciseId}
+                      type="button"
+                      role="option"
+                      aria-selected={index === currentIndex}
+                      className={`exercise-sheet-item ${index === currentIndex ? 'active' : ''} ${log.done ? 'done' : ''}`}
+                      onClick={() => {
+                        setCurrentIndex(index)
+                        setExerciseSheetOpen(false)
+                      }}
+                    >
+                      <span className="order-badge">{index + 1}</span>
+                      {exercise?.name ?? log.exerciseId}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -590,6 +581,48 @@ export function WorkoutSessionView({
           Discard
         </button>
       </div>
+
+      {mode === 'perform' && currentLog
+        ? createPortal(
+            <div className="perform-sticky-bar">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setExerciseSheetOpen(false)
+                  setCurrentIndex((value) => Math.max(0, value - 1))
+                }}
+                disabled={currentIndex === 0}
+                aria-label="Previous exercise"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => markExerciseDone(currentIndex)}
+                disabled={Boolean(currentLog.done)}
+              >
+                {currentLog.done ? 'Done' : 'Mark done'}
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setExerciseSheetOpen(false)
+                  setCurrentIndex((value) =>
+                    Math.min(logs.length - 1, value + 1),
+                  )
+                }}
+                disabled={currentIndex === logs.length - 1}
+                aria-label="Next exercise"
+              >
+                Next
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {preview ? (
         <ExerciseGuide exercise={preview} onClose={() => setPreview(null)} />
