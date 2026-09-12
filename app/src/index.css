@@ -1132,7 +1132,16 @@ a.text-link:hover {
 }
 
 .workout-session.is-perform {
-  padding-bottom: 4.25rem;
+  padding-bottom: 5.5rem;
+}
+
+.app-shell:has(.is-perform) .brand p {
+  display: none;
+}
+
+.app-shell:has(.is-perform) .topbar {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.7rem;
 }
 
 .perform-hero {
@@ -1159,6 +1168,7 @@ a.text-link:hover {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
+  max-height: min(28vh, 220px);
 }
 
 .perform-copy {
@@ -1913,12 +1923,36 @@ a.text-link:hover {
   }
 
   .workout-session.is-perform .workout-header {
-    gap: 0.45rem;
-    margin-bottom: 0.7rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    margin-bottom: 0.55rem;
+    padding: 0.7rem 0.8rem;
+  }
+
+  .workout-session.is-perform .workout-head-copy .section-eyebrow,
+  .workout-session.is-perform .workout-head-copy p {
+    display: none;
   }
 
   .workout-session.is-perform .workout-header h2 {
-    font-size: 1.35rem;
+    font-size: 1.2rem;
+  }
+
+  .workout-session.is-perform .mode-switch {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .workout-session.is-perform .workout-header > .btn {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 0.35rem 0.7rem;
+  }
+
+  .perform-frames .exercise-image-btn img {
+    max-height: 108px;
   }
 
   .perform-sticky-bar {

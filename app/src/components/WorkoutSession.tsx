@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { bodyPartLabel, exerciseById } from '../data/exercises'
 import { emptySet, lastSetsForExercise } from '../storage'
 import type {
@@ -581,42 +582,47 @@ export function WorkoutSessionView({
         </button>
       </div>
 
-      {mode === 'perform' && currentLog ? (
-        <div className="perform-sticky-bar">
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={() => {
-              setExerciseSheetOpen(false)
-              setCurrentIndex((value) => Math.max(0, value - 1))
-            }}
-            disabled={currentIndex === 0}
-            aria-label="Previous exercise"
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => markExerciseDone(currentIndex)}
-            disabled={Boolean(currentLog.done)}
-          >
-            {currentLog.done ? 'Done' : 'Mark done'}
-          </button>
-          <button
-            type="button"
-            className="btn secondary"
-            onClick={() => {
-              setExerciseSheetOpen(false)
-              setCurrentIndex((value) => Math.min(logs.length - 1, value + 1))
-            }}
-            disabled={currentIndex === logs.length - 1}
-            aria-label="Next exercise"
-          >
-            Next
-          </button>
-        </div>
-      ) : null}
+      {mode === 'perform' && currentLog
+        ? createPortal(
+            <div className="perform-sticky-bar">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setExerciseSheetOpen(false)
+                  setCurrentIndex((value) => Math.max(0, value - 1))
+                }}
+                disabled={currentIndex === 0}
+                aria-label="Previous exercise"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => markExerciseDone(currentIndex)}
+                disabled={Boolean(currentLog.done)}
+              >
+                {currentLog.done ? 'Done' : 'Mark done'}
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() => {
+                  setExerciseSheetOpen(false)
+                  setCurrentIndex((value) =>
+                    Math.min(logs.length - 1, value + 1),
+                  )
+                }}
+                disabled={currentIndex === logs.length - 1}
+                aria-label="Next exercise"
+              >
+                Next
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {preview ? (
         <ExerciseGuide exercise={preview} onClose={() => setPreview(null)} />
