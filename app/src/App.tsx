@@ -7,7 +7,6 @@ import { ProgramShareDialog } from './components/ProgramShareDialog'
 import { Programs } from './components/Programs'
 import { WorkoutSessionView } from './components/WorkoutSession'
 import {
-  exerciseIdsFromLogs,
   loadPrograms,
   programLookup,
   savePrograms,
@@ -27,6 +26,7 @@ import type {
   ActiveWorkout,
   Program,
   ProgramDay,
+  ProgramExercise,
   WorkoutMode,
   WorkoutSession,
 } from './types'
@@ -79,9 +79,9 @@ export default function App() {
   function saveProgramDay(
     programId: string,
     dayId: string,
-    exerciseIds: string[],
+    exercises: ProgramExercise[],
   ) {
-    setPrograms((prev) => updateProgramDay(prev, programId, dayId, exerciseIds))
+    setPrograms((prev) => updateProgramDay(prev, programId, dayId, exercises))
   }
 
   function addProgram(program: Program) {
@@ -103,7 +103,7 @@ export default function App() {
     if (!program || !day) return
     const session =
       findTodaysSession(sessions, programId, dayId) ??
-      createWorkoutSession(programId, dayId, day.exerciseIds, sessions)
+      createWorkoutSession(programId, dayId, day.exercises)
     setActive({ programId, dayId, mode, session })
   }
 
@@ -116,11 +116,6 @@ export default function App() {
   }
 
   function saveWorkout(session: WorkoutSession) {
-    saveProgramDay(
-      session.programId,
-      session.dayId,
-      exerciseIdsFromLogs(session.exercises),
-    )
     setSessions((prev) => upsertSession(prev, session))
     setActive(null)
     setTab('history')
@@ -129,9 +124,9 @@ export default function App() {
   function saveProgramChanges(
     programId: string,
     dayId: string,
-    exerciseIds: string[],
+    exercises: ProgramExercise[],
   ) {
-    saveProgramDay(programId, dayId, exerciseIds)
+    saveProgramDay(programId, dayId, exercises)
     setActive(null)
     setTab('programs')
   }
@@ -196,8 +191,8 @@ export default function App() {
             onSave={saveWorkout}
             onDraft={persistDraft}
             onModeChange={changeWorkoutMode}
-            onSaveProgram={(exerciseIds) =>
-              saveProgramChanges(active.programId, active.dayId, exerciseIds)
+            onSaveProgram={(exercises) =>
+              saveProgramChanges(active.programId, active.dayId, exercises)
             }
           />
         ) : null}
