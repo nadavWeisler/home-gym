@@ -17,7 +17,7 @@ import {
   type WorkoutType,
   type WorkoutTypeId,
 } from '../data/workoutTypes'
-import { createProgramId } from '../programStorage'
+import { createProgramId, defaultProgramSets } from '../programStorage'
 import type { Exercise, Program } from '../types'
 import { ExercisePickDialog } from './ExercisePickDialog'
 
@@ -197,9 +197,12 @@ export function ProgramBuilder({
       days: type.days.map((day) => ({
         id: day.id,
         name: day.name,
-        exerciseIds: day.muscles.flatMap(
-          (target) => selections[day.id]?.[target.part] ?? [],
-        ),
+        exercises: day.muscles
+          .flatMap((target) => selections[day.id]?.[target.part] ?? [])
+          .map((exerciseId) => ({
+            exerciseId,
+            sets: defaultProgramSets(),
+          })),
       })),
     }
   }

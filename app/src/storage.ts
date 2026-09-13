@@ -1,6 +1,8 @@
+import { defaultProgramSets } from './programStorage'
 import type {
   ActiveWorkout,
   ExerciseLog,
+  ProgramExercise,
   SetLog,
   WorkoutMode,
   WorkoutSession,
@@ -72,21 +74,18 @@ export function findTodaysSession(
   )
 }
 
-export function buildSessionLogs(
-  exerciseIds: string[],
-  sessions: WorkoutSession[],
-  excludeSessionId?: string,
+export function logsFromProgramExercises(
+  exercises: ProgramExercise[],
 ): ExerciseLog[] {
-  return exerciseIds.map((exerciseId) => {
-    const last = lastSetsForExercise(sessions, exerciseId, excludeSessionId)
-    const count = last?.length ?? 3
+  return exercises.map((item) => {
+    const targets = item.sets.length > 0 ? item.sets : defaultProgramSets()
     return {
-      exerciseId,
+      exerciseId: item.exerciseId,
       done: false,
-      sets: Array.from({ length: count }, (_, index) => ({
-        id: `${createSetId()}-${index}`,
-        reps: last?.[index]?.reps ?? 8,
-        weight: last?.[index]?.weight ?? 0,
+      sets: targets.map((set) => ({
+        id: createSetId(),
+        reps: set.reps,
+        weight: set.weight,
         done: false,
       })),
     }
@@ -96,15 +95,14 @@ export function buildSessionLogs(
 export function createWorkoutSession(
   programId: string,
   dayId: string,
-  exerciseIds: string[],
-  sessions: WorkoutSession[],
+  exercises: ProgramExercise[],
 ): WorkoutSession {
   return {
     id: createSessionId(),
     programId,
     dayId,
     date: new Date().toISOString(),
-    exercises: buildSessionLogs(exerciseIds, sessions),
+    exercises: logsFromProgramExercises(exercises),
   }
 }
 

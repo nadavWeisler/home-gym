@@ -1,4 +1,5 @@
-import type { Program, ProgramDay } from './types'
+import { coerceProgram } from './programStorage'
+import type { Program } from './types'
 
 /** QR version 40, error correction L — max 8-bit capacity. */
 export const QR_MAX_BYTES = 2953
@@ -11,7 +12,11 @@ export class ProgramTransferError extends Error {
 }
 
 export function serializeProgram(program: Program): string {
-  return JSON.stringify(normalizeProgram(program))
+  const normalized = coerceProgram(program)
+  if (!normalized) {
+    throw new ProgramTransferError('That program cannot be shared.')
+  }
+  return JSON.stringify(normalized)
 }
 
 export function programByteLength(payload: string): number {
@@ -40,10 +45,11 @@ export function parseProgramPayload(raw: string): Program {
   }
 
   const candidate = unwrapPayload(parsed)
-  if (!isProgram(candidate)) {
+  const program = coerceProgram(candidate)
+  if (!program) {
     throw new ProgramTransferError('That file is not a training program.')
   }
-  return normalizeProgram(candidate)
+  return program
 }
 
 export function downloadProgramJson(program: Program): void {
@@ -66,43 +72,4 @@ function unwrapPayload(parsed: unknown): unknown {
     throw new ProgramTransferError('This program transfer version is not supported.')
   }
   return envelope.program
-}
-
-function isProgramDay(value: unknown): value is ProgramDay {
-  if (!value || typeof value !== 'object') return false
-  const day = value as Partial<ProgramDay>
-  return (
-    typeof day.id === 'string' &&
-    day.id.length > 0 &&
-    typeof day.name === 'string' &&
-    Array.isArray(day.exerciseIds) &&
-    day.exerciseIds.every((id) => typeof id === 'string')
-  )
-}
-
-function isProgram(value: unknown): value is Program {
-  if (!value || typeof value !== 'object') return false
-  const program = value as Partial<Program>
-  return (
-    typeof program.id === 'string' &&
-    program.id.length > 0 &&
-    typeof program.name === 'string' &&
-    typeof program.description === 'string' &&
-    Array.isArray(program.days) &&
-    program.days.length > 0 &&
-    program.days.every(isProgramDay)
-  )
-}
-
-function normalizeProgram(program: Program): Program {
-  return {
-    id: program.id,
-    name: program.name,
-    description: program.description,
-    days: program.days.map((day) => ({
-      id: day.id,
-      name: day.name,
-      exerciseIds: day.exerciseIds.filter((id) => id.length > 0),
-    })),
-  }
 }

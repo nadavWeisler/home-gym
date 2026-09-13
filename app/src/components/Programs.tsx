@@ -1,4 +1,5 @@
 import { bodyPartLabel, exerciseById } from '../data/exercises'
+import { dayExerciseIds, programSetLabel } from '../programStorage'
 import type { Program, WorkoutMode } from '../types'
 
 type Props = {
@@ -75,7 +76,7 @@ export function Programs({
               <div className="program-card-meta">
                 <span className="stat-pill">
                   {program.days.reduce(
-                    (total, day) => total + day.exerciseIds.length,
+                    (total, day) => total + day.exercises.length,
                     0,
                   )}{' '}
                   moves
@@ -96,40 +97,46 @@ export function Programs({
                   <div className="day-block-head">
                     <div>
                       <strong>{day.name}</strong>
-                      <span>{day.exerciseIds.length} exercises</span>
+                      <span>{day.exercises.length} exercises</span>
                     </div>
                   </div>
 
                   <div className="program-preview" aria-hidden="true">
-                    {day.exerciseIds.slice(0, 6).map((exerciseId) => {
-                      const exercise = exerciseById[exerciseId]
-                      if (!exercise?.image) return null
-                      return (
-                        <img
-                          key={exerciseId}
-                          src={exercise.image}
-                          alt=""
-                          loading="lazy"
-                        />
-                      )
-                    })}
-                    {day.exerciseIds.length > 6 ? (
+                    {dayExerciseIds(day)
+                      .slice(0, 6)
+                      .map((exerciseId) => {
+                        const exercise = exerciseById[exerciseId]
+                        if (!exercise?.image) return null
+                        return (
+                          <img
+                            key={exerciseId}
+                            src={exercise.image}
+                            alt=""
+                            loading="lazy"
+                          />
+                        )
+                      })}
+                    {day.exercises.length > 6 ? (
                       <span className="preview-more">
-                        +{day.exerciseIds.length - 6}
+                        +{day.exercises.length - 6}
                       </span>
                     ) : null}
                   </div>
 
                   <ol className="training-order">
-                    {day.exerciseIds.map((exerciseId) => {
-                      const exercise = exerciseById[exerciseId]
+                    {day.exercises.map((item) => {
+                      const exercise = exerciseById[item.exerciseId]
+                      const target = programSetLabel(item.sets)
                       return (
-                        <li key={exerciseId}>
-                          {exercise?.name ?? exerciseId}
+                        <li key={item.exerciseId}>
+                          {exercise?.name ?? item.exerciseId}
                           {exercise ? (
                             <span className="training-tag">
                               {bodyPartLabel[exercise.bodyPart]}
                             </span>
+                          ) : null}
+                          {target ? (
+                            <span className="training-tag">{target}</span>
                           ) : null}
                         </li>
                       )

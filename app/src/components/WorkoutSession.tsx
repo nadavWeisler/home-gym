@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { bodyPartLabel, exerciseById } from '../data/exercises'
-import { emptySet, lastSetsForExercise } from '../storage'
+import { defaultProgramSets } from '../programStorage'
+import {
+  createSetId,
+  lastSetsForExercise,
+  logsFromProgramExercises,
+} from '../storage'
 import type {
   Exercise,
   ExerciseLog,
   Program,
   ProgramDay,
+  ProgramExercise,
   SetLog,
   WorkoutMode,
   WorkoutSession,
@@ -25,7 +31,18 @@ type Props = {
   onSave: (session: WorkoutSession) => void
   onDraft: (session: WorkoutSession) => void
   onModeChange: (mode: WorkoutMode) => void
-  onSaveProgram: (exerciseIds: string[]) => void
+  onSaveProgram: (exercises: ProgramExercise[]) => void
+}
+
+type EditSet = {
+  key: string
+  reps: number
+  weight: number
+}
+
+type EditExercise = {
+  exerciseId: string
+  sets: EditSet[]
 }
 
 function remainingWork(logs: ExerciseLog[]): boolean {
@@ -61,6 +78,30 @@ function SetsHead() {
   )
 }
 
+function toEditExercises(exercises: ProgramExercise[]): EditExercise[] {
+  return exercises.map((item) => ({
+    exerciseId: item.exerciseId,
+    sets: (item.sets.length > 0 ? item.sets : defaultProgramSets()).map(
+      (set) => ({
+        key: createSetId(),
+        reps: set.reps,
+        weight: set.weight,
+      }),
+    ),
+  }))
+}
+
+function toProgramExercises(items: EditExercise[]): ProgramExercise[] {
+  return items.map((item) => ({
+    exerciseId: item.exerciseId,
+    sets: item.sets.map((set) => ({ reps: set.reps, weight: set.weight })),
+  }))
+}
+
+function sessionHasLoggedWork(logs: ExerciseLog[]): boolean {
+  return logs.some((log) => log.done || log.sets.some((set) => set.done))
+}
+
 export function WorkoutSessionView({
   program,
   day,
@@ -74,6 +115,9 @@ export function WorkoutSessionView({
   onSaveProgram,
 }: Props) {
   const [mode, setMode] = useState<WorkoutMode>(initialMode)
+  const [targets, setTargets] = useState<EditExercise[]>(() =>
+    toEditExercises(day.exercises),
+  )
   const [logs, setLogs] = useState<ExerciseLog[]>(() => session.exercises)
   const [notes, setNotes] = useState(session.notes ?? '')
   const [preview, setPreview] = useState<Exercise | null>(null)
@@ -89,16 +133,20 @@ export function WorkoutSessionView({
 
   const lastByExercise = useMemo(() => {
     const map: Record<string, SetLog[]> = {}
-    for (const log of logs) {
+    const ids = [
+      ...logs.map((log) => log.exerciseId),
+      ...targets.map((item) => item.exerciseId),
+    ]
+    for (const exerciseId of ids) {
       const last = lastSetsForExercise(
         previousSessions,
-        log.exerciseId,
+        exerciseId,
         session.id,
       )
-      if (last) map[log.exerciseId] = last
+      if (last) map[exerciseId] = last
     }
     return map
-  }, [logs, previousSessions, session.id])
+  }, [logs, targets, previousSessions, session.id])
 
   useEffect(() => {
     onDraftRef.current({
@@ -116,13 +164,19 @@ export function WorkoutSessionView({
   const currentExercise = currentLog
     ? exerciseById[currentLog.exerciseId]
     : undefined
+  const replacingTarget = replacingIndex !== null ? targets[replacingIndex] : undefined
 
   function changeMode(next: WorkoutMode) {
+    if (next === 'perform' && !sessionHasLoggedWork(logs)) {
+      const nextLogs = logsFromProgramExercises(toProgramExercises(targets))
+      setLogs(nextLogs)
+      setCurrentIndex(0)
+    }
     setMode(next)
     onModeChange(next)
   }
 
-  function updateSet(
+  function updateLogSet(
     exerciseIndex: number,
     setIndex: number,
     field: 'reps' | 'weight',
@@ -141,48 +195,93 @@ export function WorkoutSessionView({
     )
   }
 
-  function addSet(exerciseIndex: number) {
-    setLogs((prev) =>
-      prev.map((log, i) =>
-        i === exerciseIndex
-          ? { ...log, sets: [...log.sets, emptySet()], done: false }
-          : log,
-      ),
+  function updateTargetSet(
+    exerciseIndex: number,
+    setIndex: number,
+    field: 'reps' | 'weight',
+    value: number,
+  ) {
+    setTargets((prev) =>
+      prev.map((item, i) => {
+        if (i !== exerciseIndex) return item
+        return {
+          ...item,
+          sets: item.sets.map((set, j) =>
+            j === setIndex ? { ...set, [field]: value } : set,
+          ),
+        }
+      }),
     )
   }
 
-  function removeSet(exerciseIndex: number, setIndex: number) {
-    setLogs((prev) =>
-      prev.map((log, i) => {
-        if (i !== exerciseIndex) return log
-        if (log.sets.length <= 1) return log
-        const sets = log.sets.filter((_, j) => j !== setIndex)
-        return { ...log, sets, done: sets.every((set) => set.done) }
+  function addTargetSet(exerciseIndex: number) {
+    setTargets((prev) =>
+      prev.map((item, i) => {
+        if (i !== exerciseIndex) return item
+        const last = item.sets[item.sets.length - 1]
+        return {
+          ...item,
+          sets: [
+            ...item.sets,
+            {
+              key: createSetId(),
+              reps: last?.reps ?? 8,
+              weight: last?.weight ?? 0,
+            },
+          ],
+        }
+      }),
+    )
+  }
+
+  function removeTargetSet(exerciseIndex: number, setIndex: number) {
+    setTargets((prev) =>
+      prev.map((item, i) => {
+        if (i !== exerciseIndex) return item
+        if (item.sets.length <= 1) return item
+        return {
+          ...item,
+          sets: item.sets.filter((_, j) => j !== setIndex),
+        }
       }),
     )
   }
 
   function moveExercise(index: number, direction: -1 | 1) {
     const nextIndex = index + direction
-    if (nextIndex < 0 || nextIndex >= logs.length) return
-    setLogs((prev) => {
+    if (nextIndex < 0 || nextIndex >= targets.length) return
+    setTargets((prev) => {
       const next = [...prev]
       const [item] = next.splice(index, 1)
       next.splice(nextIndex, 0, item)
       return next
     })
-    if (currentIndex === index) setCurrentIndex(nextIndex)
   }
 
   function replaceExercise(exerciseIndex: number, newExerciseId: string) {
-    setLogs((prev) =>
-      prev.map((log, i) =>
+    setTargets((prev) =>
+      prev.map((item, i) =>
         i === exerciseIndex
-          ? { ...log, exerciseId: newExerciseId, done: false }
-          : log,
+          ? {
+              exerciseId: newExerciseId,
+              sets: defaultProgramSets().map((set) => ({
+                key: createSetId(),
+                ...set,
+              })),
+            }
+          : item,
       ),
     )
     setReplacingIndex(null)
+  }
+
+  function removeExercise(index: number) {
+    setTargets((prev) => prev.filter((_, i) => i !== index))
+    setReplacingIndex((current) => {
+      if (current === null) return null
+      if (current === index) return null
+      return current > index ? current - 1 : current
+    })
   }
 
   function toggleSetDone(exerciseIndex: number, setIndex: number) {
@@ -230,7 +329,7 @@ export function WorkoutSessionView({
   }
 
   function handleSaveProgram() {
-    onSaveProgram(logs.map((log) => log.exerciseId))
+    onSaveProgram(toProgramExercises(targets))
   }
 
   function renderModeBody() {
@@ -238,12 +337,15 @@ export function WorkoutSessionView({
       case 'edit':
         return (
           <div className="workout-stack">
-            {logs.map((log, exerciseIndex) => {
-              const exercise = exerciseById[log.exerciseId]
+            {targets.length === 0 ? (
+              <p className="empty">No exercises in this day.</p>
+            ) : null}
+            {targets.map((item, exerciseIndex) => {
+              const exercise = exerciseById[item.exerciseId]
               if (!exercise) return null
 
               return (
-                <article key={log.exerciseId} className="panel exercise-log">
+                <article key={item.exerciseId} className="panel exercise-log">
                   <div className="exercise-log-head">
                     <span className="order-badge">{exerciseIndex + 1}</span>
                     <button
@@ -268,6 +370,13 @@ export function WorkoutSessionView({
                       </button>
                       <button
                         type="button"
+                        className="btn danger"
+                        onClick={() => removeExercise(exerciseIndex)}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
                         className="btn ghost"
                         onClick={() => moveExercise(exerciseIndex, -1)}
                         disabled={exerciseIndex === 0}
@@ -279,7 +388,7 @@ export function WorkoutSessionView({
                         type="button"
                         className="btn ghost"
                         onClick={() => moveExercise(exerciseIndex, 1)}
-                        disabled={exerciseIndex === logs.length - 1}
+                        disabled={exerciseIndex === targets.length - 1}
                         aria-label="Move later"
                       >
                         ↓
@@ -289,21 +398,21 @@ export function WorkoutSessionView({
 
                   <div className="sets">
                     <SetsHead />
-                    {log.sets.map((set, setIndex) => (
-                      <div key={set.id} className="set-row">
+                    {item.sets.map((set, setIndex) => (
+                      <div key={set.key} className="set-row">
                         <label>{setIndex + 1}</label>
                         <SetGhost
-                          ghost={lastByExercise[log.exerciseId]?.[setIndex]}
+                          ghost={lastByExercise[item.exerciseId]?.[setIndex]}
                         />
                         <input
                           type="number"
                           min={0}
                           inputMode="numeric"
                           placeholder="Reps"
-                          aria-label={`Reps for set ${setIndex + 1}`}
+                          aria-label={`Target reps for set ${setIndex + 1}`}
                           value={set.reps}
                           onChange={(event) =>
-                            updateSet(
+                            updateTargetSet(
                               exerciseIndex,
                               setIndex,
                               'reps',
@@ -317,10 +426,10 @@ export function WorkoutSessionView({
                           step={0.5}
                           inputMode="decimal"
                           placeholder="Weight"
-                          aria-label={`Weight for set ${setIndex + 1}`}
+                          aria-label={`Target weight for set ${setIndex + 1}`}
                           value={set.weight}
                           onChange={(event) =>
-                            updateSet(
+                            updateTargetSet(
                               exerciseIndex,
                               setIndex,
                               'weight',
@@ -331,8 +440,10 @@ export function WorkoutSessionView({
                         <button
                           type="button"
                           className="btn ghost"
-                          onClick={() => removeSet(exerciseIndex, setIndex)}
-                          aria-label={`Remove set ${setIndex + 1}`}
+                          onClick={() =>
+                            removeTargetSet(exerciseIndex, setIndex)
+                          }
+                          aria-label={`Remove target set ${setIndex + 1}`}
                         >
                           ×
                         </button>
@@ -343,7 +454,7 @@ export function WorkoutSessionView({
                   <button
                     type="button"
                     className="btn secondary"
-                    onClick={() => addSet(exerciseIndex)}
+                    onClick={() => addTargetSet(exerciseIndex)}
                   >
                     Add set
                   </button>
@@ -413,7 +524,7 @@ export function WorkoutSessionView({
                       aria-label={`Reps for set ${setIndex + 1}`}
                       value={set.reps}
                       onChange={(event) =>
-                        updateSet(
+                        updateLogSet(
                           currentIndex,
                           setIndex,
                           'reps',
@@ -430,7 +541,7 @@ export function WorkoutSessionView({
                       aria-label={`Weight for set ${setIndex + 1}`}
                       value={set.weight}
                       onChange={(event) =>
-                        updateSet(
+                        updateLogSet(
                           currentIndex,
                           setIndex,
                           'weight',
@@ -573,10 +684,11 @@ export function WorkoutSessionView({
               Start workout
             </button>
           </>
-        ) : null}
-        <button type="button" className="btn" onClick={handleSave}>
-          Save workout
-        </button>
+        ) : (
+          <button type="button" className="btn" onClick={handleSave}>
+            Save workout
+          </button>
+        )}
         <button type="button" className="btn secondary" onClick={onCancel}>
           Discard
         </button>
@@ -628,12 +740,12 @@ export function WorkoutSessionView({
         <ExerciseGuide exercise={preview} onClose={() => setPreview(null)} />
       ) : null}
 
-      {replacingIndex !== null && exerciseById[logs[replacingIndex]?.exerciseId ?? ''] ? (
+      {replacingTarget && exerciseById[replacingTarget.exerciseId] ? (
         <ExerciseReplacePicker
-          current={exerciseById[logs[replacingIndex].exerciseId]}
-          usedExerciseIds={logs.map((log) => log.exerciseId)}
+          current={exerciseById[replacingTarget.exerciseId]}
+          usedExerciseIds={targets.map((item) => item.exerciseId)}
           onSelect={(exercise) =>
-            replaceExercise(replacingIndex, exercise.id)
+            replaceExercise(replacingIndex ?? 0, exercise.id)
           }
           onClose={() => setReplacingIndex(null)}
         />

@@ -19,10 +19,20 @@ export type Exercise = {
   instructions: string[]
 }
 
+export type ProgramSet = {
+  reps: number
+  weight: number
+}
+
+export type ProgramExercise = {
+  exerciseId: string
+  sets: ProgramSet[]
+}
+
 export type ProgramDay = {
   id: string
   name: string
-  exerciseIds: string[]
+  exercises: ProgramExercise[]
 }
 
 export type Program = {
