@@ -5,9 +5,17 @@ type Props = {
   programs: Program[]
   onStart: (programId: string, dayId: string, mode: WorkoutMode) => void
   onBuildProgram: () => void
+  onShareProgram: (program: Program) => void
+  onImportProgram: () => void
 }
 
-export function Programs({ programs, onStart, onBuildProgram }: Props) {
+export function Programs({
+  programs,
+  onStart,
+  onBuildProgram,
+  onShareProgram,
+  onImportProgram,
+}: Props) {
   if (programs.length === 0) {
     return (
       <section className="empty-program hero-card">
@@ -19,9 +27,14 @@ export function Programs({ programs, onStart, onBuildProgram }: Props) {
           Build your first program from the equipment you have at home. Pick your
           gear, choose exercises, and save a plan that fits your space.
         </p>
-        <button type="button" className="btn btn-lg" onClick={onBuildProgram}>
-          Build my program
-        </button>
+        <div className="hero-actions">
+          <button type="button" className="btn btn-lg" onClick={onBuildProgram}>
+            Build my program
+          </button>
+          <button type="button" className="btn secondary" onClick={onImportProgram}>
+            Import a program
+          </button>
+        </div>
       </section>
     )
   }
@@ -37,9 +50,14 @@ export function Programs({ programs, onStart, onBuildProgram }: Props) {
             go.
           </p>
         </div>
-        <button type="button" className="btn secondary" onClick={onBuildProgram}>
-          + New program
-        </button>
+        <div className="programs-head-actions">
+          <button type="button" className="btn secondary" onClick={onImportProgram}>
+            Import
+          </button>
+          <button type="button" className="btn secondary" onClick={onBuildProgram}>
+            + New program
+          </button>
+        </div>
       </div>
 
       <div className="grid program-grid">
@@ -54,13 +72,22 @@ export function Programs({ programs, onStart, onBuildProgram }: Props) {
                 <h3>{program.name}</h3>
                 <p>{program.description}</p>
               </div>
-              <span className="stat-pill">
-                {program.days.reduce(
-                  (total, day) => total + day.exerciseIds.length,
-                  0,
-                )}{' '}
-                moves
-              </span>
+              <div className="program-card-meta">
+                <span className="stat-pill">
+                  {program.days.reduce(
+                    (total, day) => total + day.exerciseIds.length,
+                    0,
+                  )}{' '}
+                  moves
+                </span>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => onShareProgram(program)}
+                >
+                  Share
+                </button>
+              </div>
             </div>
 
             <div className="day-list">

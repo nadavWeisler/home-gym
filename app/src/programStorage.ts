@@ -26,6 +26,14 @@ export function programLookup(programs: Program[]): Record<string, Program> {
   return Object.fromEntries(programs.map((program) => [program.id, program]))
 }
 
+export function upsertProgram(programs: Program[], incoming: Program): Program[] {
+  const index = programs.findIndex((program) => program.id === incoming.id)
+  if (index === -1) return [...programs, incoming]
+  return programs.map((program, programIndex) =>
+    programIndex === index ? incoming : program,
+  )
+}
+
 export function updateProgramDay(
   programs: Program[],
   programId: string,

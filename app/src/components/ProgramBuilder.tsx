@@ -27,9 +27,15 @@ type Props = {
   isFirstProgram: boolean
   onComplete: (program: Program) => void
   onCancel?: () => void
+  onImportRequest?: () => void
 }
 
-export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) {
+export function ProgramBuilder({
+  isFirstProgram,
+  onComplete,
+  onCancel,
+  onImportRequest,
+}: Props) {
   const [step, setStep] = useState<WizardStep>(isFirstProgram ? 'welcome' : 'type')
   const [workoutTypeId, setWorkoutTypeId] = useState<WorkoutTypeId | null>(null)
   const [selectedEquipment, setSelectedEquipment] = useState<Set<string>>(
@@ -217,13 +223,24 @@ export function ProgramBuilder({ isFirstProgram, onComplete, onCancel }: Props) 
               Choose a split, pick the gear you have at home, then add exercises
               within a clear limit for each muscle group.
             </p>
-            <button
-              type="button"
-              className="btn btn-lg"
-              onClick={() => setStep('type')}
-            >
-              Build my program
-            </button>
+            <div className="hero-actions">
+              <button
+                type="button"
+                className="btn btn-lg"
+                onClick={() => setStep('type')}
+              >
+                Build my program
+              </button>
+              {onImportRequest ? (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={onImportRequest}
+                >
+                  Import a program
+                </button>
+              ) : null}
+            </div>
           </div>
         )
       case 'type':
