@@ -1813,6 +1813,100 @@ a.text-link:hover {
   outline-offset: 1px;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.programs-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.program-card-meta {
+  display: grid;
+  justify-items: end;
+  gap: 0.45rem;
+}
+
+.transfer-dialog {
+  width: min(440px, 100%);
+  gap: 0.85rem;
+}
+
+.transfer-qr {
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  padding: 0.7rem;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.transfer-qr img {
+  width: min(240px, 68vw);
+  height: auto;
+}
+
+.transfer-scanner {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.transfer-scanner #program-qr-scanner {
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0a0f0c;
+  min-height: 220px;
+}
+
+.transfer-scanner #program-qr-scanner video,
+.transfer-scanner #program-qr-scanner img {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.transfer-note {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.transfer-error {
+  color: var(--danger);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.field textarea {
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  resize: vertical;
+  min-height: 7rem;
+  font: inherit;
+}
+
+.field textarea:focus {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -1895,6 +1989,18 @@ a.text-link:hover {
   .programs-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .programs-head-actions {
+    justify-content: stretch;
+  }
+
+  .programs-head-actions .btn {
+    flex: 1;
+  }
+
+  .program-card-meta .btn {
+    width: 100%;
   }
 
   .day-actions .btn {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ExerciseBank } from './components/ExerciseBank'
 import { History } from './components/History'
 import { ProgramBuilder } from './components/ProgramBuilder'
+import { ProgramImportDialog } from './components/ProgramImportDialog'
+import { ProgramShareDialog } from './components/ProgramShareDialog'
 import { Programs } from './components/Programs'
 import { WorkoutSessionView } from './components/WorkoutSession'
 import {
@@ -9,6 +11,7 @@ import {
   programLookup,
   savePrograms,
   updateProgramDay,
+  upsertProgram,
 } from './programStorage'
 import {
   createWorkoutSession,
@@ -40,6 +43,8 @@ export default function App() {
   const [sessions, setSessions] = useState<WorkoutSession[]>(() => loadSessions())
   const [programs, setPrograms] = useState<Program[]>(() => loadPrograms())
   const [showBuilder, setShowBuilder] = useState(() => loadPrograms().length === 0)
+  const [shareProgram, setShareProgram] = useState<Program | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [active, setActive] = useState<ActiveWorkout | null>(() =>
     loadActiveWorkout(),
   )
@@ -82,6 +87,13 @@ export default function App() {
     setPrograms((prev) => [...prev, program])
     setShowBuilder(false)
     setTab('programs')
+  }
+
+  function importProgram(program: Program) {
+    setPrograms((prev) => upsertProgram(prev, program))
+    setShowBuilder(false)
+    setTab('programs')
+    setImportOpen(false)
   }
 
   function startWorkout(programId: string, dayId: string, mode: WorkoutMode) {
@@ -168,6 +180,7 @@ export default function App() {
             onCancel={
               programs.length > 0 ? () => setShowBuilder(false) : undefined
             }
+            onImportRequest={() => setImportOpen(true)}
           />
         ) : null}
 
@@ -193,6 +206,8 @@ export default function App() {
             programs={programs}
             onStart={startWorkout}
             onBuildProgram={() => setShowBuilder(true)}
+            onShareProgram={setShareProgram}
+            onImportProgram={() => setImportOpen(true)}
           />
         ) : null}
 
@@ -208,6 +223,20 @@ export default function App() {
       </main>
 
       {showNav ? renderNav('nav nav-mobile bottom-nav') : null}
+
+      {shareProgram ? (
+        <ProgramShareDialog
+          program={shareProgram}
+          onClose={() => setShareProgram(null)}
+        />
+      ) : null}
+
+      {importOpen ? (
+        <ProgramImportDialog
+          onClose={() => setImportOpen(false)}
+          onImport={importProgram}
+        />
+      ) : null}
     </div>
   )
 }
