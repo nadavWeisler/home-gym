@@ -34,6 +34,12 @@ export function upsertProgram(programs: Program[], incoming: Program): Program[]
   )
 }
 
+export function exerciseIdsFromLogs(
+  logs: { exerciseId: string }[],
+): string[] {
+  return logs.map((log) => log.exerciseId)
+}
+
 export function updateProgramDay(
   programs: Program[],
   programId: string,
@@ -43,9 +49,13 @@ export function updateProgramDay(
   return programs.map((program) => {
     if (program.id !== programId) return program
     return {
-      ...program,
+      id: program.id,
+      name: program.name,
+      description: program.description,
       days: program.days.map((day) =>
-        day.id === dayId ? { ...day, exerciseIds } : day,
+        day.id === dayId
+          ? { id: day.id, name: day.name, exerciseIds }
+          : { id: day.id, name: day.name, exerciseIds: day.exerciseIds },
       ),
     }
   })

@@ -7,6 +7,7 @@ import { ProgramShareDialog } from './components/ProgramShareDialog'
 import { Programs } from './components/Programs'
 import { WorkoutSessionView } from './components/WorkoutSession'
 import {
+  exerciseIdsFromLogs,
   loadPrograms,
   programLookup,
   savePrograms,
@@ -118,7 +119,7 @@ export default function App() {
     saveProgramDay(
       session.programId,
       session.dayId,
-      session.exercises.map((log) => log.exerciseId),
+      exerciseIdsFromLogs(session.exercises),
     )
     setSessions((prev) => upsertSession(prev, session))
     setActive(null)

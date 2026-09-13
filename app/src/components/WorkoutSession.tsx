@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { bodyPartLabel, exerciseById } from '../data/exercises'
+import { exerciseIdsFromLogs } from '../programStorage'
 import { emptySet, lastSetsForExercise } from '../storage'
 import type {
   Exercise,
@@ -185,6 +186,20 @@ export function WorkoutSessionView({
     setReplacingIndex(null)
   }
 
+  function removeExercise(index: number) {
+    setLogs((prev) => prev.filter((_, i) => i !== index))
+    setCurrentIndex((current) => {
+      if (index < current) return current - 1
+      if (index === current) return Math.max(0, Math.min(current, logs.length - 2))
+      return current
+    })
+    setReplacingIndex((current) => {
+      if (current === null) return null
+      if (current === index) return null
+      return current > index ? current - 1 : current
+    })
+  }
+
   function toggleSetDone(exerciseIndex: number, setIndex: number) {
     const willBeDone = !logs[exerciseIndex]?.sets[setIndex]?.done
     const nextLogs = logs.map((log, i) => {
@@ -230,7 +245,7 @@ export function WorkoutSessionView({
   }
 
   function handleSaveProgram() {
-    onSaveProgram(logs.map((log) => log.exerciseId))
+    onSaveProgram(exerciseIdsFromLogs(logs))
   }
 
   function renderModeBody() {
@@ -238,6 +253,9 @@ export function WorkoutSessionView({
       case 'edit':
         return (
           <div className="workout-stack">
+            {logs.length === 0 ? (
+              <p className="empty">No exercises in this day.</p>
+            ) : null}
             {logs.map((log, exerciseIndex) => {
               const exercise = exerciseById[log.exerciseId]
               if (!exercise) return null
@@ -265,6 +283,13 @@ export function WorkoutSessionView({
                         onClick={() => setReplacingIndex(exerciseIndex)}
                       >
                         Replace
+                      </button>
+                      <button
+                        type="button"
+                        className="btn danger"
+                        onClick={() => removeExercise(exerciseIndex)}
+                      >
+                        Delete
                       </button>
                       <button
                         type="button"
