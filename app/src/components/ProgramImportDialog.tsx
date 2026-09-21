@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode'
 import { parseProgramPayload, ProgramTransferError } from '../programTransfer'
+import {
+  bindCameraToVideo,
+  cameraErrorMessage,
+  createQrFrameReader,
+  requestProgramCamera,
+  stopMediaStream,
+  waitScanFrame,
+} from '../qrScan'
 import type { Program } from '../types'
 
 type Props = {
@@ -9,14 +16,16 @@ type Props = {
   onImport: (program: Program) => void
 }
 
-const SCANNER_ID = 'program-qr-scanner'
+type ScanPhase = 'idle' | 'starting' | 'live'
 
 export function ProgramImportDialog({ onClose, onImport }: Props) {
-  const [scanning, setScanning] = useState(false)
+  const [phase, setPhase] = useState<ScanPhase>('idle')
   const [paste, setPaste] = useState('')
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const scannerRef = useRef<Html5Qrcode | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const sessionRef = useRef(0)
   const lockedRef = useRef(false)
   const onImportRef = useRef(onImport)
   const onCloseRef = useRef(onClose)
@@ -35,70 +44,94 @@ export function ProgramImportDialog({ onClose, onImport }: Props) {
     return () => {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKeyDown)
+      sessionRef.current += 1
+      stopMediaStream(streamRef.current)
+      streamRef.current = null
     }
   }, [])
 
   useEffect(() => {
-    if (!scanning) return
+    if (phase !== 'live') return
+    const liveVideo = videoRef.current
+    const liveStream = streamRef.current
+    if (!liveVideo || !liveStream) {
+      setError(
+        'Could not start the camera preview. Import from a file or paste JSON instead.',
+      )
+      stopScan()
+      return
+    }
+    const videoEl: HTMLVideoElement = liveVideo
+    const streamEl: MediaStream = liveStream
 
     let cancelled = false
-    const scanner = new Html5Qrcode(SCANNER_ID, {
-      verbose: false,
-      formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-    })
-    scannerRef.current = scanner
+    const reader = createQrFrameReader()
 
-    async function startCamera() {
-      const onScan = (text: string) => {
-        void applyPayload(text)
+    async function scanLoop() {
+      try {
+        await bindCameraToVideo(videoEl, streamEl)
+      } catch (caught) {
+        if (cancelled) return
+        setError(cameraErrorMessage(caught))
+        stopScan()
+        return
       }
 
-      try {
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 8, qrbox: { width: 220, height: 220 } },
-          onScan,
-          () => undefined,
-        )
-      } catch {
-        if (cancelled) return
+      while (!cancelled) {
         try {
-          await scanner.start(
-            { facingMode: 'user' },
-            { fps: 8, qrbox: { width: 220, height: 220 } },
-            onScan,
-            () => undefined,
-          )
-        } catch {
+          const text = await reader.read(videoEl)
           if (cancelled) return
-          await safeStop(scanner)
-          scannerRef.current = null
-          setScanning(false)
-          setError(
-            'Camera permission failed or no camera is available. Import from a file or paste JSON instead.',
-          )
+          if (text && (await applyPayload(text))) return
+        } catch {
+          // Keep the live preview going if a single frame fails to decode.
         }
+        await waitScanFrame(80)
       }
     }
 
-    void startCamera()
+    void scanLoop()
 
     return () => {
       cancelled = true
-      void safeStop(scanner).then(() => {
-        if (scannerRef.current === scanner) scannerRef.current = null
-      })
+      videoEl.srcObject = null
     }
-  }, [scanning])
+  }, [phase])
 
-  async function applyPayload(raw: string) {
-    if (lockedRef.current) return
+  async function startScan() {
+    const session = ++sessionRef.current
+    setError(null)
+    setPhase('starting')
+    try {
+      const stream = await requestProgramCamera()
+      if (session !== sessionRef.current) {
+        stopMediaStream(stream)
+        return
+      }
+      streamRef.current = stream
+      setPhase('live')
+    } catch (caught) {
+      if (session !== sessionRef.current) return
+      setPhase('idle')
+      setError(cameraErrorMessage(caught))
+    }
+  }
+
+  function stopScan() {
+    sessionRef.current += 1
+    stopMediaStream(streamRef.current)
+    streamRef.current = null
+    setPhase('idle')
+  }
+
+  async function applyPayload(raw: string): Promise<boolean> {
+    if (lockedRef.current) return false
     try {
       const program = parseProgramPayload(raw)
       lockedRef.current = true
       setError(null)
-      setScanning(false)
+      stopScan()
       onImportRef.current(program)
+      return true
     } catch (caught) {
       lockedRef.current = false
       setError(
@@ -106,6 +139,7 @@ export function ProgramImportDialog({ onClose, onImport }: Props) {
           ? caught.message
           : 'Could not read a training program. Try the file or paste fallback.',
       )
+      return false
     }
   }
 
@@ -116,6 +150,46 @@ export function ProgramImportDialog({ onClose, onImport }: Props) {
       await applyPayload(await file.text())
     } catch {
       setError('Could not read that file.')
+    }
+  }
+
+  function renderScanControl() {
+    switch (phase) {
+      case 'starting':
+        return (
+          <div className="transfer-scanner">
+            <p className="transfer-note">Starting camera…</p>
+            <button type="button" className="btn ghost" onClick={stopScan}>
+              Cancel
+            </button>
+          </div>
+        )
+      case 'live':
+        return (
+          <div className="transfer-scanner">
+            <video
+              ref={videoRef}
+              className="transfer-scanner-video"
+              muted
+              playsInline
+              autoPlay
+            />
+            <p className="transfer-note">Point the camera at the program QR.</p>
+            <button type="button" className="btn ghost" onClick={stopScan}>
+              Stop camera
+            </button>
+          </div>
+        )
+      case 'idle':
+        return (
+          <button type="button" className="btn" onClick={() => void startScan()}>
+            Scan QR
+          </button>
+        )
+      default: {
+        const _exhaustive: never = phase
+        return _exhaustive
+      }
     }
   }
 
@@ -147,29 +221,7 @@ export function ProgramImportDialog({ onClose, onImport }: Props) {
           </p>
         </div>
 
-        {scanning ? (
-          <div className="transfer-scanner">
-            <div id={SCANNER_ID} />
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => setScanning(false)}
-            >
-              Stop camera
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setError(null)
-              setScanning(true)
-            }}
-          >
-            Scan QR
-          </button>
-        )}
+        {renderScanControl()}
 
         <div className="transfer-actions">
           <input
@@ -221,17 +273,4 @@ export function ProgramImportDialog({ onClose, onImport }: Props) {
     </div>,
     document.body,
   )
-}
-
-async function safeStop(scanner: Html5Qrcode): Promise<void> {
-  try {
-    if (scanner.isScanning) await scanner.stop()
-  } catch {
-    // Already stopped.
-  }
-  try {
-    scanner.clear()
-  } catch {
-    // Dialog already unmounted the preview.
-  }
 }
