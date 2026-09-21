@@ -1859,18 +1859,14 @@ a.text-link:hover {
   gap: 0.55rem;
 }
 
-.transfer-scanner #program-qr-scanner {
-  overflow: hidden;
+.transfer-scanner-video {
+  width: 100%;
+  max-height: min(52vh, 420px);
+  object-fit: cover;
+  background: #0a0f0c;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: #0a0f0c;
-  min-height: 220px;
-}
-
-.transfer-scanner #program-qr-scanner video,
-.transfer-scanner #program-qr-scanner img {
-  width: 100%;
-  border-radius: 12px;
+  display: block;
 }
 
 .transfer-note {
