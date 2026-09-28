@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { bodyPartLabel, formatEquipment } from '../data/exercises'
+import { PosePhoto } from './PosePhoto'
 import type { Exercise } from '../types'
 
 type Props = {
@@ -20,27 +21,6 @@ function oneLineDescription(exercise: Exercise): string {
   return `${bodyPartLabel[exercise.bodyPart]} movement using ${formatEquipment(exercise.equipment).toLowerCase()}.`
 }
 
-function PhotoFrame({
-  src,
-  label,
-}: {
-  src: string | undefined
-  label: string
-}) {
-  return (
-    <figure className="pick-frame">
-      {src ? (
-        <img src={src} alt="" />
-      ) : (
-        <div className="exercise-photo-fallback" aria-hidden="true">
-          No photo
-        </div>
-      )}
-      <figcaption>{label}</figcaption>
-    </figure>
-  )
-}
-
 export function ExercisePickDialog({
   exercise,
   selected,
@@ -52,9 +32,6 @@ export function ExercisePickDialog({
   const closeRef = useRef<HTMLButtonElement>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
-
-  const start = exercise.images[0] ?? exercise.image
-  const finish = exercise.images[1]
 
   useEffect(() => {
     closeRef.current?.focus()
@@ -104,8 +81,7 @@ export function ExercisePickDialog({
         </div>
 
         <div className="pick-frames">
-          <PhotoFrame src={start || undefined} label="Start" />
-          <PhotoFrame src={finish} label="Finish" />
+          <PosePhoto key={exercise.id} exercise={exercise} variant="detail" />
         </div>
 
         <div className="pick-actions">
