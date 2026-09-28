@@ -1,7 +1,132 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 const DEFAULT_REST_SECONDS = 45
 const TIMER_KEY = 'home-gym-timer'
+
+// Best-effort end cue. The ding is scheduled on a running Web Audio context and
+// also triggered when the countdown hits zero. Vibration and a notification fire
+// once at 0 when the browser allows them. Locked or backgrounded pages often
+// suspend timers and audio until the user returns, so lock-screen sound is not
+// guaranteed.
+type AudioContextCtor = typeof AudioContext
+
+let audioContext: AudioContext | null = null
+let chimeEndsAt: number | null = null
+let chimeStop: (() => void) | null = null
+let playedEndsAt: number | null = null
+let notifyPermissionAsked = false
+
+function audioContextCtor(): AudioContextCtor | null {
+  const legacy = window as Window & { webkitAudioContext?: AudioContextCtor }
+  return window.AudioContext ?? legacy.webkitAudioContext ?? null
+}
+
+function getAudioContext(): AudioContext | null {
+  const Ctor = audioContextCtor()
+  if (!Ctor) return null
+  if (!audioContext) audioContext = new Ctor()
+  return audioContext
+}
+
+function unlockRestAlerts(): void {
+  const ctx = getAudioContext()
+  if (ctx?.state === 'suspended') void ctx.resume()
+  if (typeof Notification === 'undefined') return
+  if (Notification.permission !== 'default' || notifyPermissionAsked) return
+  notifyPermissionAsked = true
+  void Notification.requestPermission()
+}
+
+function stopChime(): void {
+  chimeStop?.()
+  chimeStop = null
+  chimeEndsAt = null
+}
+
+function cancelPendingChime(): void {
+  if (chimeEndsAt != null && playedEndsAt === chimeEndsAt) return
+  stopChime()
+}
+
+function playTone(ctx: AudioContext, when: number): () => void {
+  const fundamental = ctx.createOscillator()
+  const overtone = ctx.createOscillator()
+  const gain = ctx.createGain()
+  fundamental.type = 'sine'
+  overtone.type = 'sine'
+  fundamental.frequency.setValueAtTime(880, when)
+  overtone.frequency.setValueAtTime(1318.5, when)
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.exponentialRampToValueAtTime(0.2, when + 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.48)
+  fundamental.connect(gain)
+  overtone.connect(gain)
+  gain.connect(ctx.destination)
+  fundamental.start(when)
+  overtone.start(when + 0.12)
+  fundamental.stop(when + 0.5)
+  overtone.stop(when + 0.5)
+  return () => {
+    try {
+      gain.disconnect()
+      fundamental.disconnect()
+      overtone.disconnect()
+    } catch {
+      // Nodes throw if they are already disconnected.
+    }
+  }
+}
+
+function scheduleChime(endsAt: number): void {
+  if (chimeEndsAt === endsAt) return
+  const ctx = getAudioContext()
+  if (!ctx || ctx.state !== 'running') return
+  stopChime()
+  const delay = Math.max(0, (endsAt - Date.now()) / 1000)
+  const when = ctx.currentTime + delay
+  chimeEndsAt = endsAt
+  chimeStop = playTone(ctx, when)
+}
+
+function vibrateRestDone(): void {
+  try {
+    navigator.vibrate?.([160, 70, 160])
+  } catch {
+    // Vibration is unsupported or blocked.
+  }
+}
+
+function notifyRestDone(): void {
+  if (typeof Notification === 'undefined') return
+  if (Notification.permission !== 'granted') return
+  try {
+    new Notification('Rest complete', {
+      body: 'Time for the next set.',
+      tag: 'home-gym-rest',
+    })
+  } catch {
+    // Some browsers only construct Notification from a service worker.
+  }
+}
+
+function signalRestComplete(endsAt: number): void {
+  if (playedEndsAt === endsAt) return
+  playedEndsAt = endsAt
+  const ctx = getAudioContext()
+  const scheduledWillPlay = chimeEndsAt === endsAt && ctx?.state === 'running'
+  if (!scheduledWillPlay && ctx) {
+    stopChime()
+    const play = () => {
+      chimeEndsAt = endsAt
+      chimeStop = playTone(ctx, ctx.currentTime + 0.02)
+    }
+    if (ctx.state === 'running') play()
+    else void ctx.resume().then(play).catch(() => {})
+  }
+  vibrateRestDone()
+  notifyRestDone()
+}
 
 type Props = {
   sessionId: string
@@ -94,6 +219,7 @@ export function WorkoutTimer({
   const [snapshot, setSnapshot] = useState(() => readSnapshot(sessionId))
   const [now, setNow] = useState(() => Date.now())
   const sessionRunningRef = useRef(sessionRunning)
+  const armedEndsAt = useRef<number | null>(null)
   sessionRunningRef.current = sessionRunning
 
   useEffect(() => {
@@ -167,9 +293,53 @@ export function WorkoutTimer({
     })
   }, [now, snapshot.restEndsAt])
 
+  useEffect(() => {
+    if (!sessionRunning) return
+    function onGesture() {
+      unlockRestAlerts()
+    }
+    window.addEventListener('pointerdown', onGesture, true)
+    window.addEventListener('keydown', onGesture, true)
+    return () => {
+      window.removeEventListener('pointerdown', onGesture, true)
+      window.removeEventListener('keydown', onGesture, true)
+    }
+  }, [sessionRunning])
+
   const remaining = restSeconds(snapshot, now)
   const elapsed = sessionSeconds(snapshot, now)
   const resting = snapshot.restEndsAt != null && remaining > 0
+  const showFinalCount = resting && remaining <= 3
+
+  useEffect(() => {
+    const endsAt = snapshot.restEndsAt
+    if (endsAt != null && remaining > 0) {
+      armedEndsAt.current = endsAt
+      scheduleChime(endsAt)
+      return
+    }
+    if (endsAt != null && remaining === 0 && armedEndsAt.current === endsAt) {
+      armedEndsAt.current = null
+      signalRestComplete(endsAt)
+    }
+  }, [snapshot.restEndsAt, remaining])
+
+  useEffect(() => {
+    const endsAt = snapshot.restEndsAt
+    if (endsAt == null) {
+      cancelPendingChime()
+      return
+    }
+    const delay = Math.max(0, endsAt - Date.now())
+    const timer = window.setTimeout(() => {
+      if (armedEndsAt.current !== endsAt) return
+      armedEndsAt.current = null
+      signalRestComplete(endsAt)
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [snapshot.restEndsAt])
+
+  useEffect(() => () => cancelPendingChime(), [])
 
   function changeDuration(value: number) {
     const seconds = Math.max(1, value)
@@ -211,38 +381,56 @@ export function WorkoutTimer({
   }
 
   return (
-    <div className="timer-widget">
-      <div className="timer-block">
-        <p className="timer-label">Session</p>
-        <p className="timer-digits">{formatClock(elapsed)}</p>
-      </div>
-      <div className="timer-block">
-        <p className="timer-label">Rest</p>
-        <p className={`timer-digits ${remaining === 0 ? 'done' : ''}`}>
-          {formatClock(remaining)}
-        </p>
-        <label className="timer-duration">
-          <input
-            type="number"
-            min={1}
-            inputMode="numeric"
-            aria-label="Rest seconds"
-            value={snapshot.restDuration}
-            onChange={(event) =>
-              changeDuration(Number(event.target.value) || 0)
-            }
-          />
-          <span>s</span>
-        </label>
-        <div className="timer-controls">
-          <button type="button" className="btn" onClick={toggleRest}>
-            {resting ? 'Pause' : 'Start'}
-          </button>
-          <button type="button" className="btn secondary" onClick={resetRest}>
-            Reset
-          </button>
+    <>
+      <div className="timer-widget">
+        <div className="timer-block">
+          <p className="timer-label">Session</p>
+          <p className="timer-digits">{formatClock(elapsed)}</p>
+        </div>
+        <div className="timer-block">
+          <p className="timer-label">Rest</p>
+          <p className={`timer-digits ${remaining === 0 ? 'done' : ''}`}>
+            {formatClock(remaining)}
+          </p>
+          <label className="timer-duration">
+            <input
+              type="number"
+              min={1}
+              inputMode="numeric"
+              aria-label="Rest seconds"
+              value={snapshot.restDuration}
+              onChange={(event) =>
+                changeDuration(Number(event.target.value) || 0)
+              }
+            />
+            <span>s</span>
+          </label>
+          <div className="timer-controls">
+            <button type="button" className="btn" onClick={toggleRest}>
+              {resting ? 'Pause' : 'Start'}
+            </button>
+            <button type="button" className="btn secondary" onClick={resetRest}>
+              Reset
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+      {showFinalCount
+        ? createPortal(
+            <div className="rest-countdown" role="status" aria-live="assertive">
+              <p className="rest-countdown-label">Rest</p>
+              <span
+                key={remaining}
+                className="rest-countdown-digit"
+                aria-hidden="true"
+              >
+                {remaining}
+              </span>
+              <span className="visually-hidden">Rest ends in {remaining}</span>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   )
 }

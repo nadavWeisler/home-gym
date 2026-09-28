@@ -19,6 +19,7 @@ import type {
 } from '../types'
 import { ExerciseGuide } from './ExerciseGuide'
 import { ExerciseReplacePicker } from './ExerciseReplacePicker'
+import { PosePhoto } from './PosePhoto'
 import { WorkoutTimer } from './WorkoutTimer'
 
 type Props = {
@@ -472,37 +473,11 @@ export function WorkoutSessionView({
           <article
             className={`panel perform-hero ${currentLog.done ? 'is-done' : ''}`}
           >
-              <div className="perform-frames">
-                {(currentExercise.images.length > 0
-                  ? currentExercise.images
-                  : [currentExercise.image]
-                ).map((src, index, frames) => (
-                  <button
-                    key={src}
-                    type="button"
-                    className="exercise-image-btn"
-                    onClick={() => setPreview(currentExercise)}
-                    aria-label={
-                      frames.length === 2
-                        ? index === 0
-                          ? `View larger start position of ${currentExercise.name}`
-                          : `View larger finish position of ${currentExercise.name}`
-                        : `View larger photo of ${currentExercise.name}`
-                    }
-                  >
-                    <img src={src} alt="" />
-                    {frames.length > 1 ? (
-                      <span className="photo-count">
-                        {frames.length === 2
-                          ? index === 0
-                            ? 'Start'
-                            : 'Finish'
-                          : `Step ${index + 1}`}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+              <PosePhoto
+                key={currentExercise.id}
+                exercise={currentExercise}
+                variant="perform"
+              />
 
               <p className="perform-copy body-part">
                 {bodyPartLabel[currentExercise.bodyPart]}
