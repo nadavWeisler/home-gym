@@ -4,11 +4,12 @@ import { createPortal } from 'react-dom'
 const DEFAULT_REST_SECONDS = 45
 const TIMER_KEY = 'home-gym-timer'
 
-// Best-effort end cue. The ding is scheduled on a running Web Audio context and
-// also triggered when the countdown hits zero. Vibration and a notification fire
-// once at 0 when the browser allows them. Locked or backgrounded pages often
-// suspend timers and audio until the user returns, so lock-screen sound is not
-// guaranteed.
+// Best-effort rest cues on a running Web Audio context: a short tick at 3, 2,
+// and 1, and a longer done tone at 0. The done tone also plays when the
+// countdown hits zero if that schedule did not arm. Vibration and a
+// notification fire once at 0 when the browser allows them. Locked or
+// backgrounded pages often suspend timers and audio until the user returns, so
+// lock-screen sound is not guaranteed.
 type AudioContextCtor = typeof AudioContext
 
 let audioContext: AudioContext | null = null
@@ -49,44 +50,88 @@ function cancelPendingChime(): void {
   stopChime()
 }
 
-function playTone(ctx: AudioContext, when: number): () => void {
-  const fundamental = ctx.createOscillator()
-  const overtone = ctx.createOscillator()
-  const gain = ctx.createGain()
-  fundamental.type = 'sine'
-  overtone.type = 'sine'
-  fundamental.frequency.setValueAtTime(880, when)
-  overtone.frequency.setValueAtTime(1318.5, when)
-  gain.gain.setValueAtTime(0.0001, when)
-  gain.gain.exponentialRampToValueAtTime(0.2, when + 0.02)
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.48)
-  fundamental.connect(gain)
-  overtone.connect(gain)
-  gain.connect(ctx.destination)
-  fundamental.start(when)
-  overtone.start(when + 0.12)
-  fundamental.stop(when + 0.5)
-  overtone.stop(when + 0.5)
-  return () => {
+const TICK_LEAD_SECONDS = [3, 2, 1] as const
+const TICK_LATE_MS = 200
+
+function stopNodes(nodes: AudioNode[]): void {
+  for (const node of nodes) {
     try {
-      gain.disconnect()
-      fundamental.disconnect()
-      overtone.disconnect()
+      node.disconnect()
     } catch {
       // Nodes throw if they are already disconnected.
     }
   }
 }
 
+function playTick(ctx: AudioContext, when: number): () => void {
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(1760, when)
+  osc.frequency.exponentialRampToValueAtTime(880, when + 0.045)
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.exponentialRampToValueAtTime(0.14, when + 0.004)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.06)
+  osc.connect(gain)
+  gain.connect(ctx.destination)
+  osc.start(when)
+  osc.stop(when + 0.07)
+  return () => stopNodes([gain, osc])
+}
+
+function playTone(ctx: AudioContext, when: number): () => void {
+  const first = ctx.createOscillator()
+  const second = ctx.createOscillator()
+  const gain = ctx.createGain()
+  first.type = 'sine'
+  second.type = 'sine'
+  first.frequency.setValueAtTime(523.25, when)
+  second.frequency.setValueAtTime(783.99, when)
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.exponentialRampToValueAtTime(0.22, when + 0.015)
+  gain.gain.exponentialRampToValueAtTime(0.06, when + 0.16)
+  gain.gain.exponentialRampToValueAtTime(0.24, when + 0.19)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.62)
+  first.connect(gain)
+  second.connect(gain)
+  gain.connect(ctx.destination)
+  first.start(when)
+  second.start(when + 0.16)
+  first.stop(when + 0.2)
+  second.stop(when + 0.64)
+  return () => stopNodes([gain, first, second])
+}
+
 function scheduleChime(endsAt: number): void {
   if (chimeEndsAt === endsAt) return
   const ctx = getAudioContext()
-  if (!ctx || ctx.state !== 'running') return
+  if (!ctx) return
+  if (ctx.state !== 'running') {
+    if (ctx.state === 'suspended') {
+      void ctx
+        .resume()
+        .then(() => {
+          if (ctx.state === 'running') scheduleChime(endsAt)
+        })
+        .catch(() => {})
+    }
+    return
+  }
   stopChime()
-  const delay = Math.max(0, (endsAt - Date.now()) / 1000)
-  const when = ctx.currentTime + delay
+  const stops: Array<() => void> = []
+  const nowMs = Date.now()
+  for (const secondsLeft of TICK_LEAD_SECONDS) {
+    const atMs = endsAt - secondsLeft * 1000
+    if (nowMs - atMs > TICK_LATE_MS) continue
+    const when = ctx.currentTime + Math.max(0, atMs - nowMs) / 1000
+    stops.push(playTick(ctx, when))
+  }
+  const doneDelay = Math.max(0, (endsAt - nowMs) / 1000)
+  stops.push(playTone(ctx, ctx.currentTime + doneDelay))
   chimeEndsAt = endsAt
-  chimeStop = playTone(ctx, when)
+  chimeStop = () => {
+    for (const stop of stops) stop()
+  }
 }
 
 function vibrateRestDone(): void {
