@@ -5,34 +5,60 @@ const DEFAULT_REST_SECONDS = 45
 const TIMER_KEY = 'home-gym-timer'
 
 // Best-effort rest cues on a running Web Audio context: a short tick at 3, 2,
-// and 1, and a longer done tone at 0. The done tone also plays when the
-// countdown hits zero if that schedule did not arm. Vibration and a
+// and 1, and a longer done tone at 0. Suspending the context freezes its
+// clock while wall time keeps moving, so cues are re-armed from wall time
+// when it runs again and late ticks are dropped. The done tone also plays
+// when the countdown hits zero if that schedule did not arm. Vibration and a
 // notification fire once at 0 when the browser allows them. Locked or
 // backgrounded pages often suspend timers and audio until the user returns, so
 // lock-screen sound is not guaranteed.
 type AudioContextCtor = typeof AudioContext
 
 let audioContext: AudioContext | null = null
+let audioWasSuspended = false
 let chimeEndsAt: number | null = null
 let chimeStop: (() => void) | null = null
 let playedEndsAt: number | null = null
+let requestedEndsAt: number | null = null
 let notifyPermissionAsked = false
+// Bumped when a rest is paused, reset, or superseded so a resume() that
+// settles later cannot arm cues for a cancelled endsAt.
+let cueGeneration = 0
 
 function audioContextCtor(): AudioContextCtor | null {
   const legacy = window as Window & { webkitAudioContext?: AudioContextCtor }
   return window.AudioContext ?? legacy.webkitAudioContext ?? null
 }
 
+function audioClockSuspended(state: AudioContextState): boolean {
+  return state === 'suspended' || (state as string) === 'interrupted'
+}
+
+function onAudioContextState(): void {
+  const ctx = audioContext
+  if (!ctx) return
+  const wasSuspended = audioWasSuspended
+  audioWasSuspended = audioClockSuspended(ctx.state)
+  if (!wasSuspended || ctx.state !== 'running') return
+  const endsAt = requestedEndsAt ?? chimeEndsAt
+  if (endsAt == null || playedEndsAt === endsAt) return
+  armChime(endsAt)
+}
+
 function getAudioContext(): AudioContext | null {
   const Ctor = audioContextCtor()
   if (!Ctor) return null
-  if (!audioContext) audioContext = new Ctor()
+  if (!audioContext) {
+    audioContext = new Ctor()
+    audioWasSuspended = audioClockSuspended(audioContext.state)
+    audioContext.addEventListener('statechange', onAudioContextState)
+  }
   return audioContext
 }
 
 function unlockRestAlerts(): void {
   const ctx = getAudioContext()
-  if (ctx?.state === 'suspended') void ctx.resume()
+  if (ctx && audioClockSuspended(ctx.state)) void ctx.resume()
   if (typeof Notification === 'undefined') return
   if (Notification.permission !== 'default' || notifyPermissionAsked) return
   notifyPermissionAsked = true
@@ -47,6 +73,8 @@ function stopChime(): void {
 
 function cancelPendingChime(): void {
   if (chimeEndsAt != null && playedEndsAt === chimeEndsAt) return
+  cueGeneration += 1
+  requestedEndsAt = null
   stopChime()
 }
 
@@ -103,14 +131,21 @@ function playTone(ctx: AudioContext, when: number): () => void {
 }
 
 function scheduleChime(endsAt: number): void {
+  requestedEndsAt = endsAt
   if (chimeEndsAt === endsAt) return
+  armChime(endsAt)
+}
+
+function armChime(endsAt: number): void {
   const ctx = getAudioContext()
   if (!ctx) return
   if (ctx.state !== 'running') {
-    if (ctx.state === 'suspended') {
+    if (audioClockSuspended(ctx.state)) {
+      const generation = ++cueGeneration
       void ctx
         .resume()
         .then(() => {
+          if (generation !== cueGeneration) return
           if (ctx.state === 'running') scheduleChime(endsAt)
         })
         .catch(() => {})
